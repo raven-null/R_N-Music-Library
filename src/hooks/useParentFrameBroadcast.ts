@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { PlayerState, type Line, type LyricData, type SongResult } from '../types';
+import { PlayerState, type Line, type LyricData, type SongResult, type StageLoopMode } from '../types';
 import { selectDisplayPlayerState, usePlaybackStore } from '../stores/usePlaybackStore';
+import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
 
 // src/hooks/useParentFrameBroadcast.ts
 //
@@ -24,12 +25,12 @@ import { selectDisplayPlayerState, usePlaybackStore } from '../stores/usePlaybac
 export const NOW_PLAYING_MESSAGE = 'folia:now-playing';
 
 /**
- * The other direction: the host's little controls (prev / play-pause / next) on its now-playing pill.
- * `action` is one of `FOLIA_CONTROL_ACTIONS`.
+ * The other direction: the host's little controls (prev / play-pause / next / loop) on its now-playing
+ * pill or card. `action` is one of `FOLIA_CONTROL_ACTIONS`.
  */
 export const CONTROL_MESSAGE = 'folia:control';
 
-export type FoliaControlAction = 'prev' | 'toggle' | 'next';
+export type FoliaControlAction = 'prev' | 'toggle' | 'next' | 'loop';
 
 /** What the host must hand over so the pill's controls can drive this player. */
 export interface ParentFrameTransport {
@@ -67,7 +68,18 @@ export interface NowPlayingPayload {
     lyric: NowPlayingLyricLine | null;
     /** The line after this one, so the host can prepare its transition. */
     nextLyric: { text: string } | null;
+    /** The queue loop the player is set to, so the host's loop button can show where it stands. */
+    loopMode: StageLoopMode;
+    /**
+     * The lines around the active one, for a host that draws a scrolling lyric box rather than a single
+     * line. `active` is the index into `lines`. Null while the song has no timed lyrics.
+     */
+    lyricsWindow: { lines: NowPlayingLyricLine[]; active: number } | null;
 }
+
+/** How many lines before and after the active one the window carries. */
+const LYRIC_LEAD = 5;
+const LYRIC_TRAIL = 7;
 
 function lineAt(lines: Line[], index: number): Line | null {
     return index >= 0 && index < lines.length ? lines[index] : null;
@@ -87,6 +99,7 @@ function readSong(song: SongResult, coverUrl: string | null): NowPlayingSong {
 /** Reads the store once and shapes the payload the host draws from. Exported for the unit tests. */
 export function buildNowPlayingPayload(
     state: ReturnType<typeof usePlaybackStore.getState>,
+    loopMode: StageLoopMode = useAudioSettingsStore.getState().loopMode,
 ): NowPlayingPayload {
     const lyrics: LyricData | null = state.lyrics;
     const lines = lyrics?.lines ?? [];
@@ -94,6 +107,25 @@ export function buildNowPlayingPayload(
     const current = lineAt(lines, index);
     const next = lineAt(lines, index + 1);
     const song = state.currentSong;
+
+    // The window a scrolling lyric box draws: the active line sits LYRIC_LEAD lines down from the top,
+    // and the box scrolls as the song moves from one window to the next.
+    let lyricsWindow: NowPlayingPayload['lyricsWindow'] = null;
+    if (lines.length > 0 && index >= 0 && index < lines.length) {
+        const start = Math.max(0, index - LYRIC_LEAD);
+        const end = Math.min(lines.length, index + LYRIC_TRAIL + 1);
+        const windowLines = lines.slice(start, end);
+        lyricsWindow = {
+            lines: windowLines.map((line, offset) => ({
+                index: start + offset,
+                text: line.fullText ?? '',
+                translation: line.translation ?? '',
+                startMs: line.startTime ?? 0,
+                endMs: line.endTime ?? 0,
+            })),
+            active: index - start,
+        };
+    }
 
     return {
         type: NOW_PLAYING_MESSAGE,
@@ -111,6 +143,8 @@ export function buildNowPlayingPayload(
               }
             : null,
         nextLyric: next ? { text: next.fullText ?? '' } : null,
+        loopMode,
+        lyricsWindow,
     };
 }
 
@@ -144,9 +178,12 @@ export function useParentFrameBroadcast(transport: ParentFrameTransport): void {
         };
 
         publish();
-        const unsubscribe = usePlaybackStore.subscribe(publish);
+        const unsubPlayback = usePlaybackStore.subscribe(publish);
+        // The loop setting lives in the audio settings store: the host's loop button must see it move.
+        const unsubSettings = useAudioSettingsStore.subscribe(publish);
         return () => {
-            unsubscribe();
+            unsubPlayback();
+            unsubSettings();
         };
     }, []);
 
@@ -165,6 +202,10 @@ export function useParentFrameBroadcast(transport: ParentFrameTransport): void {
                     transportRef.current.handlePrevTrack();
                 } else if (data.action === 'next') {
                     void transportRef.current.handleNextTrack();
+                } else if (data.action === 'loop') {
+                    // The host's loop button: off â†?all â†?one â†?off, the same cycle the player's own
+                    // control runs, so both surfaces stay one setting.
+                    useAudioSettingsStore.getState().handleToggleLoopMode();
                 } else if (data.action === 'toggle') {
                     // The display state, not the raw one: during a blend's lead the raw transport is
                     // IDLE while the outgoing deck still plays, and "toggle" would start a deck twice.
