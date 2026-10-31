@@ -18,6 +18,9 @@ import type { LibraryNavigationContext } from '../../core/suite/suite.contract';
 // 登录与切换确认不在缝里：登录是共用的登录窗口（src/components/login），确认框是回退到的 grid account surface。
 // fb4（缝内的过渡）：每一次整条翻走——转出的半圈（降低动效时的淡出）里旧内容一律 inert + aria-hidden，
 // 读屏与用例只看得到要换上的那一层。
+// 现在只留 inert：它本来就把子树从无障碍树、Tab 顺序和命中测试里摘掉，浏览器又禁止给「含焦点元素」的
+// 子树加 aria-hidden（控制台那条 Blocked aria-hidden 就是翻牌把用户点过的按钮连同焦点一起藏起来时报的）。
+// 翻牌结束后焦点由 fb10 的交接交给新内容里的标题（BravaisSeamTab 的 action:expand / action:spine）。
 // 当前页过滤（设计稿 §7.6）：输入位在缝的内容里（BravaisSeamFilterField，随内容翻牌），不再给命令面板的内联框留锚点。
 // 信息条横向（axis 'y'）：缝是一道横条（data-bravais-seam-axis="y"，bravaisSeamRow.css），内容按「此刻渲染的这一套」的
 // 高度排版、竖直居中，底部不留播放条安全区（横条不贴底）；开口落定时横条不裁内容（菜单可以伸出横条，renderFrame 写
@@ -95,7 +98,6 @@ const BravaisSeam: React.FC<BravaisSeamProps> = ({
                         className="bravais-seam-body"
                         style={{ paddingBottom: bottomPx }}
                         inert={hideLeaving}
-                        aria-hidden={hideLeaving || undefined}
                         data-bravais-seam-leaving={hideLeaving || undefined}
                     >
                         <BravaisSeamNavigation.Provider value={navigation}>
