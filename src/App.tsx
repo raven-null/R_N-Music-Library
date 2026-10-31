@@ -175,6 +175,7 @@ import StageSessionEmptyState from './components/app/stage/StageSessionEmptyStat
 import { useVisualizerRendererModel } from './components/visualizer/useVisualizerRendererModel';
 import { useVisualizerTunings } from './components/visualizer/useVisualizerTunings';
 import { usePlaybackRuntimeRefs } from './components/app/playback/usePlaybackRuntimeRefs';
+import { useParentFrameBroadcast } from './hooks/useParentFrameBroadcast';
 import { useElectronWindowChrome } from './hooks/useElectronWindowChrome';
 import { useTransportCommandRefs } from './components/app/playback/bridges/useTransportCommandRefs';
 import { useAccountReads } from './hooks/useAccountReads';
@@ -201,6 +202,9 @@ const NEXT_UP_LEAD_SEC = 5;
 export default function App() {
     countRender('App');
     const { t } = useTranslation();
+    // The host page (the blog, framing /music) cannot read the player across the origin: push the
+    // song and the current lyric line out so it can draw its now-playing pill. No-op when not framed.
+    useParentFrameBroadcast();
     const {
         navidromeEnabled, setNavidromeEnabledState,
         starredNavidromeSongIds, setStarredNavidromeSongIds,
