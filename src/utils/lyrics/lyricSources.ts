@@ -40,7 +40,9 @@ interface LyricSourceEntry {
 // In the order the automatic pick asks them after the preferred one, which is also the order of
 // the tabs in the match windows and of the choices in settings.
 const ENTRIES = [
-    { id: 'netease', labelKey: 'lyricProvider.netease', platform: true, localMetadataIdentity: true },
+    // 这条来源的平台在没配 API 地址的网页构建里整块用不了（provider 的 getAvailability 回 runtime-unavailable），
+    // 所以歌词匹配窗口和自动匹配也要先看它的 provider 是不是可用。
+    { id: 'netease', labelKey: 'lyricProvider.netease', platform: true, localMetadataIdentity: true, needsConfiguredProvider: true },
     { id: 'amll', labelKey: 'lyricProvider.amll', platform: false },
     { id: 'qq', labelKey: 'lyricProvider.qq', platform: true, localMetadataIdentity: true },
     { id: 'kugou', labelKey: 'lyricProvider.kugou', platform: true, localMetadataIdentity: true },

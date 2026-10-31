@@ -18,6 +18,7 @@ import { getPlaybackSourceRef } from '../../../utils/appPlaybackGuards';
 import { toFiniteNumber } from '../../../utils/replayGain';
 import { createProviderSongMetadata } from '../../../utils/songMetadata';
 import { NeteaseLoginHttpError, getNeteaseRemoteApiBase, httpErrorStatusOf, neteaseApi, resolveNeteaseSongAvailability } from './netease';
+import { isNeteaseApiUsable } from './neteaseRuntime';
 import i18n from '../../../i18n/config';
 import { readProviderSessionValue, removeProviderSessionValue, writeProviderSessionValue } from '../providerStorage';
 import { readNeteaseOldAccountCache, removeNeteaseOldAccountCache } from './neteaseOldAccountCache';
@@ -298,7 +299,11 @@ export const neteaseProvider: OnlineMusicProvider = {
     mark: { letter: '云', color: '#dc2626' },
     watch: watchNeteaseLocalService,
     describeFailure: describeNeteaseFailure,
-    getAvailability: () => ({ configured: true }),
+    // 网页构建没配 VITE_NETEASE_API_BASE 时网易云整块用不了：登录窗口不列出来，账户也不去问，
+    // 免得每次启动都留一条 "who is signed in could not be asked"。桌面版走内嵌后端，一直是能用的。
+    getAvailability: () => (isNeteaseApiUsable()
+        ? { configured: true } as const
+        : { configured: false, reason: 'runtime-unavailable' } as const),
     capabilities: {
         search: true,
         playback: true,
