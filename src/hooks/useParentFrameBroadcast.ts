@@ -26,7 +26,7 @@ export const NOW_PLAYING_MESSAGE = 'folia:now-playing';
 
 /**
  * The other direction: the host's little controls (prev / play-pause / next / loop) on its now-playing
- * pill or card. `action` is one of `FOLIA_CONTROL_ACTIONS`.
+ * pill or card. `action` is one of the control actions below.
  */
 export const CONTROL_MESSAGE = 'folia:control';
 
@@ -68,8 +68,13 @@ export interface NowPlayingPayload {
     lyric: NowPlayingLyricLine | null;
     /** The line after this one, so the host can prepare its transition. */
     nextLyric: { text: string } | null;
-    /** The queue loop the player is set to, so the host's loop button can show where it stands. */
+    /** The loop the player is set to, so the host's loop button can show where it stands. */
     loopMode: StageLoopMode;
+    /**
+     * Where the song is, in whole seconds. The store keeps no playhead of its own, so this is read off
+     * the element that is playing; the host draws its progress bar from it. 0 while nothing plays.
+     */
+    positionMs: number;
     /**
      * The lines around the active one, for a host that draws a scrolling lyric box rather than a single
      * line. `active` is the index into `lines`. Null while the song has no timed lyrics.
@@ -80,6 +85,16 @@ export interface NowPlayingPayload {
 /** How many lines before and after the active one the window carries. */
 const LYRIC_LEAD = 5;
 const LYRIC_TRAIL = 7;
+
+/** The playhead in whole seconds. */
+function readPositionMs(): number {
+    if (typeof document === 'undefined') return 0;
+    const audio = document.querySelector('audio') as HTMLAudioElement | null;
+    const seconds = audio?.currentTime;
+    return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
+        ? Math.floor(seconds) * 1000
+        : 0;
+}
 
 function lineAt(lines: Line[], index: number): Line | null {
     return index >= 0 && index < lines.length ? lines[index] : null;
@@ -114,9 +129,8 @@ export function buildNowPlayingPayload(
     if (lines.length > 0 && index >= 0 && index < lines.length) {
         const start = Math.max(0, index - LYRIC_LEAD);
         const end = Math.min(lines.length, index + LYRIC_TRAIL + 1);
-        const windowLines = lines.slice(start, end);
         lyricsWindow = {
-            lines: windowLines.map((line, offset) => ({
+            lines: lines.slice(start, end).map((line, offset) => ({
                 index: start + offset,
                 text: line.fullText ?? '',
                 translation: line.translation ?? '',
@@ -144,6 +158,7 @@ export function buildNowPlayingPayload(
             : null,
         nextLyric: next ? { text: next.fullText ?? '' } : null,
         loopMode,
+        positionMs: readPositionMs(),
         lyricsWindow,
     };
 }
@@ -181,9 +196,13 @@ export function useParentFrameBroadcast(transport: ParentFrameTransport): void {
         const unsubPlayback = usePlaybackStore.subscribe(publish);
         // The loop setting lives in the audio settings store: the host's loop button must see it move.
         const unsubSettings = useAudioSettingsStore.subscribe(publish);
+        // Neither store moves with the playhead, so the host's progress bar is fed from here: once a
+        // second is all a bar needs, and the signature check drops everything that did not change.
+        const progressTimer = window.setInterval(publish, 1000);
         return () => {
             unsubPlayback();
             unsubSettings();
+            window.clearInterval(progressTimer);
         };
     }, []);
 
@@ -203,7 +222,7 @@ export function useParentFrameBroadcast(transport: ParentFrameTransport): void {
                 } else if (data.action === 'next') {
                     void transportRef.current.handleNextTrack();
                 } else if (data.action === 'loop') {
-                    // The host's loop button: off â†?all â†?one â†?off, the same cycle the player's own
+                    // The host's loop button: off â†’ all â†’ one â†’ off, the same cycle the player's own
                     // control runs, so both surfaces stay one setting.
                     useAudioSettingsStore.getState().handleToggleLoopMode();
                 } else if (data.action === 'toggle') {
