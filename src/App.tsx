@@ -202,9 +202,6 @@ const NEXT_UP_LEAD_SEC = 5;
 export default function App() {
     countRender('App');
     const { t } = useTranslation();
-    // The host page (the blog, framing /music) cannot read the player across the origin: push the
-    // song and the current lyric line out so it can draw its now-playing pill. No-op when not framed.
-    useParentFrameBroadcast();
     const {
         navidromeEnabled, setNavidromeEnabledState,
         starredNavidromeSongIds, setStarredNavidromeSongIds,
@@ -1424,6 +1421,11 @@ export default function App() {
         taskbarHasTrackRef,
         taskbarPlayerStateRef,
     } = useTransportCommandRefs({ resumePlayback, pausePlayback, handlePrevTrack, handleNextTrack });
+
+    // The host page (the blog, framing /music) cannot read the player across the origin: push the
+    // song and the current lyric line out, and take its prev / play-pause / next back the other way.
+    // Mounted here rather than at the top because it needs the transport callbacks above.
+    useParentFrameBroadcast({ resumePlayback, pausePlayback, handlePrevTrack, handleNextTrack });
 
     const mediaSessionOptions = {
         audioRef,

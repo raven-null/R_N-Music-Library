@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { PlayerState, type Line, type LyricData, type SongResult } from '../types';
-import { usePlaybackStore } from '../stores/usePlaybackStore';
+import { selectDisplayPlayerState, usePlaybackStore } from '../stores/usePlaybackStore';
 
 // src/hooks/useParentFrameBroadcast.ts
 //
@@ -22,6 +22,22 @@ import { usePlaybackStore } from '../stores/usePlaybackStore';
 
 /** The message the host listens for. Versioned by its own name: a host ignores what it does not know. */
 export const NOW_PLAYING_MESSAGE = 'folia:now-playing';
+
+/**
+ * The other direction: the host's little controls (prev / play-pause / next) on its now-playing pill.
+ * `action` is one of `FOLIA_CONTROL_ACTIONS`.
+ */
+export const CONTROL_MESSAGE = 'folia:control';
+
+export type FoliaControlAction = 'prev' | 'toggle' | 'next';
+
+/** What the host must hand over so the pill's controls can drive this player. */
+export interface ParentFrameTransport {
+    resumePlayback: () => Promise<void>;
+    pausePlayback: () => void;
+    handlePrevTrack: () => void;
+    handleNextTrack: () => Promise<void>;
+}
 
 export interface NowPlayingSong {
     id: string;
@@ -99,10 +115,18 @@ export function buildNowPlayingPayload(
 }
 
 /**
- * Pushes `NOW_PLAYING_MESSAGE` to the parent frame whenever what the host draws changes.
+ * Pushes `NOW_PLAYING_MESSAGE` to the parent frame whenever what the host draws changes, and takes
+ * the host's `CONTROL_MESSAGE` commands back the other way.
  * Mounted once, at the root of the app; a no-op when the app is not framed.
  */
-export function useParentFrameBroadcast(): void {
+export function useParentFrameBroadcast(transport: ParentFrameTransport): void {
+    // The bridges own these callbacks and rebuild them every render; the message listener binds
+    // once, so it reads the newest ones through a ref instead of closing over a stale render.
+    const transportRef = useRef(transport);
+    useEffect(() => {
+        transportRef.current = transport;
+    });
+
     useEffect(() => {
         if (typeof window === 'undefined' || window.parent === window) return;
 
@@ -123,6 +147,41 @@ export function useParentFrameBroadcast(): void {
         const unsubscribe = usePlaybackStore.subscribe(publish);
         return () => {
             unsubscribe();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || window.parent === window) return;
+
+        const onMessage = (event: MessageEvent) => {
+            const data = event.data as { type?: string; action?: FoliaControlAction } | null;
+            if (!data || data.type !== CONTROL_MESSAGE) return;
+            const state = usePlaybackStore.getState();
+            // Nothing to control yet: ignore rather than let a stray command start a song.
+            if (!state.currentSong) return;
+
+            try {
+                if (data.action === 'prev') {
+                    transportRef.current.handlePrevTrack();
+                } else if (data.action === 'next') {
+                    void transportRef.current.handleNextTrack();
+                } else if (data.action === 'toggle') {
+                    // The display state, not the raw one: during a blend's lead the raw transport is
+                    // IDLE while the outgoing deck still plays, and "toggle" would start a deck twice.
+                    if (selectDisplayPlayerState(state) === PlayerState.PLAYING) {
+                        transportRef.current.pausePlayback();
+                    } else {
+                        void transportRef.current.resumePlayback();
+                    }
+                }
+            } catch {
+                // A control that throws must not take the player down with it.
+            }
+        };
+
+        window.addEventListener('message', onMessage);
+        return () => {
+            window.removeEventListener('message', onMessage);
         };
     }, []);
 }
