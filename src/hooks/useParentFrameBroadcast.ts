@@ -25,12 +25,12 @@ import { useAudioSettingsStore } from '../stores/useAudioSettingsStore';
 export const NOW_PLAYING_MESSAGE = 'folia:now-playing';
 
 /**
- * The other direction: the host's little controls (prev / play-pause / next / loop) on its now-playing
- * pill or card. `action` is one of the control actions below.
+ * The other direction: the host's little controls (prev / play-pause / next / loop / seek) on its
+ * now-playing pill or card. `action` is one of the control actions below; `seek` carries `positionMs`.
  */
 export const CONTROL_MESSAGE = 'folia:control';
 
-export type FoliaControlAction = 'prev' | 'toggle' | 'next' | 'loop';
+export type FoliaControlAction = 'prev' | 'toggle' | 'next' | 'loop' | 'seek';
 
 /** What the host must hand over so the pill's controls can drive this player. */
 export interface ParentFrameTransport {
@@ -38,6 +38,8 @@ export interface ParentFrameTransport {
     pausePlayback: () => void;
     handlePrevTrack: () => void;
     handleNextTrack: () => Promise<void>;
+    /** Jump to a position, in milliseconds from the start of the song. */
+    seekTo: (positionMs: number) => void;
 }
 
 export interface NowPlayingSong {
@@ -210,7 +212,7 @@ export function useParentFrameBroadcast(transport: ParentFrameTransport): void {
         if (typeof window === 'undefined' || window.parent === window) return;
 
         const onMessage = (event: MessageEvent) => {
-            const data = event.data as { type?: string; action?: FoliaControlAction } | null;
+            const data = event.data as { type?: string; action?: FoliaControlAction; positionMs?: unknown } | null;
             if (!data || data.type !== CONTROL_MESSAGE) return;
             const state = usePlaybackStore.getState();
             // Nothing to control yet: ignore rather than let a stray command start a song.
@@ -221,6 +223,12 @@ export function useParentFrameBroadcast(transport: ParentFrameTransport): void {
                     transportRef.current.handlePrevTrack();
                 } else if (data.action === 'next') {
                     void transportRef.current.handleNextTrack();
+                } else if (data.action === 'seek') {
+                    // The host's progress bar: a position in milliseconds, clamped to a real number.
+                    const positionMs = Number(data.positionMs);
+                    if (Number.isFinite(positionMs) && positionMs >= 0) {
+                        transportRef.current.seekTo(positionMs);
+                    }
                 } else if (data.action === 'loop') {
                     // The host's loop button: off → all → one → off, the same cycle the player's own
                     // control runs, so both surfaces stay one setting.

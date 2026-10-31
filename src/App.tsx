@@ -1376,6 +1376,8 @@ export default function App() {
      */
     const seekDuringTransitionRef = useRef<(time: number) => boolean>(() => false);
     const pauseDuringTransitionRef = useRef<() => boolean>(() => false);
+    /** The host page's progress bar seeks through this one; `seekMainAudio` is wired in below. */
+    const parentSeekRef = useRef<(time: number) => void>(() => {});
     /** Shared by every entry point that can seek while a blend is in flight. */
     const seekDuringTransition = useCallback((time: number) => seekDuringTransitionRef.current(time), []);
     const handlePauseDuringTransition = useCallback(() => pauseDuringTransitionRef.current(), []);
@@ -1423,9 +1425,16 @@ export default function App() {
     } = useTransportCommandRefs({ resumePlayback, pausePlayback, handlePrevTrack, handleNextTrack });
 
     // The host page (the blog, framing /music) cannot read the player across the origin: push the
-    // song and the current lyric line out, and take its prev / play-pause / next back the other way.
-    // Mounted here rather than at the top because it needs the transport callbacks above.
-    useParentFrameBroadcast({ resumePlayback, pausePlayback, handlePrevTrack, handleNextTrack });
+    // song and the current lyric line out, and take its prev / play-pause / next / loop / seek back
+    // the other way. Mounted here rather than at the top because it needs the transport callbacks
+    // above; the seek it needs is defined further down, so it travels through a ref.
+    useParentFrameBroadcast({
+        resumePlayback,
+        pausePlayback,
+        handlePrevTrack,
+        handleNextTrack,
+        seekTo: (positionMs: number) => parentSeekRef.current(Math.max(0, positionMs / 1000)),
+    });
 
     const mediaSessionOptions = {
         audioRef,
@@ -2057,6 +2066,9 @@ export default function App() {
             void publishStagePlayerPlaybackUpdate();
         }
     }, [publishStagePlayerPlaybackUpdate]);
+
+    // The framed host's progress bar reaches this one through the ref wired up above.
+    parentSeekRef.current = seekMainAudio;
 
     const handleMonetLyricLineSeek = useCallback((lyricTimeSec: number) => {
         if (isNowPlayingControlDisabled) {
