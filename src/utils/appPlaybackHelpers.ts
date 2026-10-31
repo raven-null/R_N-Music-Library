@@ -76,6 +76,14 @@ export const toSafeRemoteUrl = (url: string | null | undefined): string | null |
         ) {
             return normalizedUrl.replace(/^http:/, 'https:');
         }
+        // QQ 音乐的音频直链落在 stream.qqmusic.qq.com 的各子域上（sjy6 / ws / isure …）：
+        // HTTPS 页面里 http 地址会被当混合内容拦掉，播放和分析下载都会失败；这些 CDN 支持 HTTPS，直接升级协议。
+        if (
+            parsedUrl.protocol === 'http:' &&
+            /(?:^|\.)stream\.qqmusic\.qq\.com$/i.test(parsedUrl.hostname)
+        ) {
+            return normalizedUrl.replace(/^http:/, 'https:');
+        }
     } catch {
         return normalizedUrl;
     }

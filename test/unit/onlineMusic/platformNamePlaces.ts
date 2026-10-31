@@ -112,7 +112,7 @@ export const PLATFORM_NAME_PLACES: Record<string, PlatformNamePlace> = {
     'src/types/localLibrary.ts': { n: { netease: 1, qq: 1, kugou: 1, spotify: 2 }, kind: 'doc' },
     'src/types/onlineMusic.ts': { n: { netease: 4, qq: 1, ytm: 5, spotify: 3 }, kind: 'list', why: 'the type of a platform id, and the platform that is active where none was chosen' },
     'src/utils/appPlaybackGuards.ts': { n: { netease: 1 }, kind: 'stored', why: 'the platform of a stored song that names none' },
-    'src/utils/appPlaybackHelpers.ts': { n: { kugou: 3 }, kind: 'stored', why: 'URL hosts' },
+    'src/utils/appPlaybackHelpers.ts': { n: { qq: 2, kugou: 3 }, kind: 'stored', why: 'URL hosts: the audio hosts whose http address is upgraded to https (2026-10-31)' },
     'src/utils/consoleLogBuffer.ts': { n: { kugou: 1 }, kind: 'doc' },
     'src/utils/coverUrl.ts': { n: { netease: 6, qq: 20, kugou: 14, bodian: 1 }, kind: 'question', why: 'how each platform\'s picture host is asked for a size; the code has only the URL to go by; raised by the upstream merge 2026-10-17' },
     'src/utils/fmQueue.ts': { n: { qq: 1 }, kind: 'doc' },
