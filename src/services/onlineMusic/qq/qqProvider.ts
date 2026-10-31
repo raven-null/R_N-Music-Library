@@ -235,17 +235,75 @@ const getPlaylistTracks = async (
     }
 
     // 收藏的、分享链接进来的歌单本来就只能走匿名路由；后端太旧时也回落到这里。
-    const { tracks, total } = await loadRawPlaylistTracks(id, collection);
-    const items = tracks
-        .slice(offset, offset + Math.max(0, limit))
-        .map(normalizeQqSong);
-    const nextOffset = offset + items.length;
-    return {
-        items,
-        ...(total === undefined ? {} : { total }),
-        hasMore: nextOffset < tracks.length,
-        nextOffset,
-    };
+    try {
+        const { tracks, total } = await loadRawPlaylistTracks(id, collection);
+        const items = tracks
+            .slice(offset, offset + Math.max(0, limit))
+            .map(normalizeQqSong);
+        const nextOffset = offset + items.length;
+        return {
+            items,
+            ...(total === undefined ? {} : { total }),
+            hasMore: nextOffset < tracks.length,
+            nextOffset,
+        };
+    } catch (error) {
+        // 这条匿名路由要一次拉回整张歌单，一张大歌单会顶到后端的预算（500 上游超时），
+        // 于是整张歌单在界面上就是「打不开」。这时退一步用带凭据的路由读：它对收藏歌单可能少一首
+        // （见上面那段实测），但总比一首都没有强。别的失败照旧抛出。
+        const rescued = await readAuthenticatedAfterAnonymousTimedOut(id, collection, safeLimit, safeOffset, error);
+        if (rescued) return rescued;
+        throw error;
+    }
+};
+
+/** 后端说的「上游超时」：500 / 504，并且 cause 里点名 TimeoutError。 */
+const isAnonymousReadTimedOut = (error: unknown): boolean => {
+    if (!(error instanceof OnlineProviderError) || error.code !== 'network') return false;
+    const status = /^QQMusicApi request failed: (\d{3})$/.exec(error.message)?.[1];
+    if (status !== '500' && status !== '504') return false;
+    const cause = error.cause as { error?: { name?: unknown } } | null | undefined;
+    return cause?.error?.name === 'TimeoutError';
+};
+
+/**
+ * 匿名全量路由等到超时之后，改用带凭据的分页路由再读一次；只有「等到超时」这一种失败才走这条路。
+ *
+ * 收藏歌单的 `dirId` 是创建者账号里的目录号，带凭据的路由拿它也能读到同一张歌单。它对收藏歌单
+ * 可能少一首（见 getPlaylistTracks 里那段实测），所以只在匿名这条路彻底读不出来时才退到这里：
+ * 宁可少一首，也好过整张歌单打不开。
+ */
+const readAuthenticatedAfterAnonymousTimedOut = async (
+    id: MediaId,
+    collection: ProviderCollection | undefined,
+    limit: number,
+    offset: number,
+    error: unknown,
+): Promise<ProviderPage<ReturnType<typeof normalizeQqSong>> | null> => {
+    // 自建歌单在上面已经走过带凭据的路由，这条只是它的回落，不必重复。
+    if (collection?.providerData?.owned === true) return null;
+    if (!isAnonymousReadTimedOut(error)) return null;
+    const dirId = Number(collection?.providerData?.dirId);
+    if (!Number.isFinite(dirId) || dirId <= 0 || dirId === 201) return null;
+    console.warn('[QQProvider] the anonymous read of a playlist timed out, reading it through the authenticated route', {
+        playlist: String(id),
+        dirId,
+    });
+    try {
+        const page = await loadRawOwnedPlaylistTracks(id, dirId, limit, offset);
+        if (!page) return null;
+        const items = page.tracks.map(normalizeQqSong);
+        const nextOffset = offset + items.length;
+        return {
+            items,
+            ...(page.total === undefined ? {} : { total: page.total }),
+            hasMore: items.length > 0 && (page.more || (page.total !== undefined && nextOffset < page.total)),
+            nextOffset,
+        };
+    } catch (retryError) {
+        console.warn('[QQProvider] the authenticated route could not read that playlist either', retryError);
+        return null;
+    }
 };
 
 const QQ_LIKED_DIR_ID = 201;

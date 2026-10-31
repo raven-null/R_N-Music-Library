@@ -1489,6 +1489,40 @@ describe('qqProvider', () => {
         expect(requestMock.mock.calls.map(call => call[0])).toEqual(['user_playlist', 'song_list_detail']);
     });
 
+    // 🔴 收藏的、分享来的歌单只能走匿名全量路由，而一张大歌单会顶到后端的预算（500 上游超时），
+    // 界面上就是整张歌单打不开。这时退到带凭据的分页路由：它可能少一首，但总比一首都没有强。
+    it('reads a favourited playlist through the authenticated route when the anonymous read times out', async () => {
+        requestMock
+            .mockRejectedValueOnce(new OnlineProviderError(
+                'network',
+                'QQMusicApi request failed: 500',
+                'qq',
+                { error: { name: 'TimeoutError', message: 'Upstream request timed out' } },
+            ))
+            .mockResolvedValueOnce({ code: 200, songs: [SEARCH_ITEM], total: 36, more: false });
+        const favourite = normalizeQqCollection({ tid: 7009600126, dirId: 36, name: '大歌单', songnum: 37, dirShow: 1 });
+
+        await expect(qqProvider.catalog!.getPlaylistTracks!(7009600126, 50, 0, favourite)).resolves.toMatchObject({
+            total: 36,
+            items: [expect.objectContaining({ qqMid: '003rJSwm3TechU' })],
+        });
+        expect(requestMock.mock.calls.map(call => call[0])).toEqual(['song_list_detail', 'user_playlist_detail']);
+        expect(requestMock).toHaveBeenLastCalledWith(
+            'user_playlist_detail',
+            { tid: '7009600126', dirid: 36, offset: 0, limit: 50 },
+        );
+    });
+
+    // 别的失败不重试：502 是 QQ 给了明确回答，换条路由只会让同一个错误变个样子。
+    it('still throws a playlist failure that is not a timeout', async () => {
+        requestMock.mockRejectedValue(new OnlineProviderError('network', 'QQMusicApi request failed: 502', 'qq'));
+        const favourite = normalizeQqCollection({ tid: 7009600126, dirId: 36, name: '大歌单', songnum: 37, dirShow: 1 });
+
+        await expect(qqProvider.catalog!.getPlaylistTracks!(7009600126, 50, 0, favourite))
+            .rejects.toMatchObject({ code: 'network' });
+        expect(requestMock.mock.calls.map(call => call[0])).toEqual(['song_list_detail']);
+    });
+
     // 用户可以自行部署任意版本的后端，新路由在旧后端上必然 404。
     it('falls back to the anonymous route when the backend has no authenticated playlist route', async () => {
         requestMock
