@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Theme } from '../../../../types';
+import { resolveCoverRequestUrl } from '../../../../services/coverRequestUrl';
 import { ARRIVING_MARK } from '../../preview/frozenPicture';
 import { useFirstFrameDrawn, useLayerUnseen } from '../../styleTransition/firstFrame';
 import { useBlendedColors } from '../useBlendedColors';
@@ -118,7 +119,8 @@ const buildSoftFocusCover = (coverUrl: string): Promise<string | null> => new Pr
     };
 
     img.onerror = () => resolve(null);
-    img.src = coverUrl;
+    // 网页端读像素要过自家代理（见 resolveCoverRequestUrl），否则不给自己 CORS 头的封面拿不到可读的画布。
+    img.src = resolveCoverRequestUrl(coverUrl);
 });
 
 // Width (px) of the buffer each non-iOS cover layer draws into; its height follows the element's aspect.

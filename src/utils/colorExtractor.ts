@@ -1,3 +1,4 @@
+import { resolveCoverRequestUrl } from '../services/coverRequestUrl';
 import { extractRepresentativeColorsFromPixels } from './colorPalette';
 
 // src/utils/colorExtractor.ts
@@ -11,6 +12,7 @@ interface RGB {
 /**
  * 把图片缩到 50×50 读出像素（crossOrigin 匿名请求）。图片加载失败、没有 CORS 头、画布被污染（读像素抛
  * SecurityError）时都返回 null。silent：失败时不打 warn（墙上一批头像取色时用，失败只是回退）。
+ * 加载地址走 resolveCoverRequestUrl：网页端不给自己 CORS 头的封面图床改成自家代理，Canvas 才读得出像素。
  */
 export const loadImagePixels = (imageUrl: string, { silent = false }: { silent?: boolean } = {}): Promise<Uint8ClampedArray | null> => (
     new Promise(resolve => {
@@ -45,7 +47,7 @@ export const loadImagePixels = (imageUrl: string, { silent = false }: { silent?:
             if (!silent) console.warn("Failed to load image for color extraction", e);
             resolve(null);
         };
-        img.src = imageUrl;
+        img.src = resolveCoverRequestUrl(imageUrl);
     })
 );
 

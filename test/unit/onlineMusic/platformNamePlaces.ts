@@ -82,7 +82,7 @@ export const PLATFORM_NAME_PLACES: Record<string, PlatformNamePlace> = {
     'src/library/suites/grid/transitions/standInHandover.ts': { n: { netease: 1, ytm: 2 }, kind: 'doc', why: 'comments on the picture-host rules under them (YouTube stills, Google\'s picture hosts, NetEase\'s hosts); those rules would go with getSizedCoverUrl in src/utils/coverUrl.ts' },
     'src/mods/folium/lyricsSource.ts': { n: { netease: 1 }, kind: 'doc' },
     'src/services/automix/trackProfile.ts': { n: { spotify: 1 }, kind: 'doc' },
-    'src/services/coverCache.ts': { n: { kugou: 1 }, kind: 'stored', why: 'a URL host' },
+    'src/services/coverRequestUrl.ts': { n: { kugou: 1 }, kind: 'stored', why: 'a URL host' },
     'src/services/localLibraryV8Migration.ts': { n: { netease: 3, qq: 1, kugou: 1 }, kind: 'stored', why: 'a migration of stored values' },
     'src/services/localMusicService.ts': { n: { netease: 7 }, kind: 'lyric', why: 'a local song\'s lyric match searches one source and stores its id' },
     'src/services/lyricExport/collectOnlineLyrics.ts': { n: { netease: 4, qq: 1 }, kind: 'stored', why: 'cache keys from before the keys carried a platform' },

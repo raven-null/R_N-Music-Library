@@ -1,4 +1,5 @@
 import type { MonetBackgroundImage, MonetBackgroundTuning, Theme } from '../../../types';
+import { resolveCoverRequestUrl } from '../../../services/coverRequestUrl';
 import type { MonetBackgroundPaintReply, MonetBackgroundPaintRequest } from './monetBackground.worker';
 
 // src/components/visualizer/monet/monetBackgroundPipeline.ts
@@ -34,7 +35,10 @@ const resolveSourceUrl = ({
 
 const loadImage = async (src: string): Promise<HTMLImageElement> => {
     const image = new Image();
-    if (src.startsWith('http://') || src.startsWith('https://')) {
+    // A cover whose host sends no CORS header is read through the app's own relay on the web, so
+    // the canvas holds readable pixels; the relay's address is same-origin and needs no crossOrigin.
+    const url = resolveCoverRequestUrl(src);
+    if (url.startsWith('http://') || url.startsWith('https://')) {
         image.crossOrigin = 'anonymous';
     }
     image.decoding = 'async';
@@ -42,10 +46,10 @@ const loadImage = async (src: string): Promise<HTMLImageElement> => {
     // Create a promise for the fallback load event
     const loadPromise = new Promise<void>((resolve, reject) => {
         image.onload = () => resolve();
-        image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+        image.onerror = () => reject(new Error(`Failed to load image: ${url}`));
     });
 
-    image.src = src;
+    image.src = url;
 
     try {
         await image.decode();

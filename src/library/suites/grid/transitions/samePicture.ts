@@ -10,7 +10,11 @@
 // it, and that square is cut into CELLS x CELLS cells, each brought down to its average colour.
 // Two pictures look the same where no cell of one is far from the same cell of the other. A
 // picture that cannot be read this way (its host does not allow it, or it does not load) looks
-// like no other.
+// like no other. An address whose host sends no CORS header is read through the app's own relay
+// (resolveCoverRequestUrl), so a cover from either platform is read rather than taken for unlike
+// any other.
+
+import { resolveCoverRequestUrl } from '../../../../services/coverRequestUrl';
 
 /** A picture is compared as this many cells a side. */
 const CELLS = 8;
@@ -46,7 +50,7 @@ export const cellsLookAlike = (first: ArrayLike<number>, second: ArrayLike<numbe
 const cellsOf = async (url: string): Promise<Float32Array | null> => {
     const picture = new Image();
     picture.crossOrigin = 'anonymous';
-    picture.src = url;
+    picture.src = resolveCoverRequestUrl(url);
     try {
         await picture.decode();
         const canvas = document.createElement('canvas');

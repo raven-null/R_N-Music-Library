@@ -34,7 +34,8 @@ const IGNORED_FORWARD_HEADERS = [
 function isAllowedLyricProxyHost(hostname) {
     return hostname === 'qq.com' || hostname.endsWith('.qq.com') ||
         hostname === 'y.gtimg.cn' ||
-        hostname === 'kugou.com' || hostname.endsWith('.kugou.com');
+        hostname === 'kugou.com' || hostname.endsWith('.kugou.com') ||
+        hostname === 'kgimg.com' || hostname.endsWith('.kgimg.com');
 }
 export default async function handler(req, res) {
     // Allow CORS for the proxy
