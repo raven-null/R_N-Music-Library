@@ -1456,6 +1456,39 @@ describe('qqProvider', () => {
         );
     });
 
+    // 🔴 自建歌单从推荐卡片、分享链接进来时手上没有 dirId：以前直接掉进匿名全量路由，
+    // `/getSongListDetail` 对一张大歌单要十秒以上，后端那十秒预算一到就回 500（上游超时，界面上像「歌单打不开」）。
+    // 现在先从账号自己的歌单列表里把目录号找回来，改走带凭据的分页路由。
+    it('finds the missing dirId in the account playlists and reads an owned playlist through the authenticated route', async () => {
+        requestMock
+            .mockResolvedValueOnce({ playlist: [{ tid: 7, dirId: 2, dirName: '新建歌单', songNum: 3, dirShow: 2 }] })
+            .mockResolvedValueOnce({ code: 200, songs: [SEARCH_ITEM], total: 3, more: false });
+        const collection = normalizeQqCollection({ tid: 7, dirName: '新建歌单' });
+
+        await expect(qqProvider.catalog!.getPlaylistTracks!(7, 50, 0, collection)).resolves.toMatchObject({
+            total: 3,
+            items: [expect.objectContaining({ qqMid: '003rJSwm3TechU' })],
+        });
+        expect(requestMock.mock.calls.map(call => call[0])).toEqual(['user_playlist', 'user_playlist_detail']);
+        expect(requestMock).toHaveBeenLastCalledWith(
+            'user_playlist_detail',
+            { tid: '7', dirid: 2, offset: 0, limit: 50 },
+        );
+    });
+
+    // 找不回来（列表里没有这张、或列表读不到）就照旧走匿名路由：不能因为一次查找失败就报错。
+    it('falls back to the anonymous route when the account playlists do not name that dirId', async () => {
+        requestMock
+            .mockResolvedValueOnce({ playlist: [] })
+            .mockResolvedValueOnce({
+                response: { code: 0, cdlist: [{ disstid: '7', dissname: '新建歌单', total_song_num: 1, songlist: [SEARCH_ITEM] }] },
+            });
+        const collection = normalizeQqCollection({ tid: 7, dirName: '新建歌单' });
+
+        await expect(qqProvider.catalog!.getPlaylistTracks!(7, 50, 0, collection)).resolves.toMatchObject({ total: 1 });
+        expect(requestMock.mock.calls.map(call => call[0])).toEqual(['user_playlist', 'song_list_detail']);
+    });
+
     // 用户可以自行部署任意版本的后端，新路由在旧后端上必然 404。
     it('falls back to the anonymous route when the backend has no authenticated playlist route', async () => {
         requestMock

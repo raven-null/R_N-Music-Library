@@ -190,8 +190,16 @@ const getPlaylistTracks = async (
     if (collection && qqListKindOf(collection)) return getQqListTracks(collection, limit, offset);
     const safeLimit = Math.max(1, limit);
     const safeOffset = Math.max(0, offset);
-    const dirId = Number(collection?.providerData?.dirId);
+    const rawDirId = Number(collection?.providerData?.dirId);
     const owned = collection?.providerData?.owned === true;
+
+    // 自建歌单从推荐卡片、分享链接进来时手里没有目录号。这时不能就这么掉到匿名全量路由：
+    // `/getSongListDetail` 一次要拉回整张歌单，serverless 后端只给它 10 秒预算，大歌单一到点
+    // 就是「上游超时」（500，界面上像歌单打不开）。到账号自己的歌单列表里把目录号找回来，
+    // 就能改走带凭据的分页路由，几秒就够。
+    const dirId = owned && !(Number.isFinite(rawDirId) && rawDirId > 0)
+        ? (await dirIdFromOwnedPlaylists(id)) ?? rawDirId
+        : rawDirId;
 
     // 我喜欢留在它自己那条早就可用的路由上：换到新路由只会让一个本来就正常的功能去承担
     // 新后端的风险，而它要解决的问题（读不到不公开的自建歌单）在这里根本不存在。
@@ -256,9 +264,13 @@ const playCountOf = (value: unknown): number | undefined => {
  */
 const getPlaylistDetail = async (id: MediaId, collection?: ProviderCollection): Promise<ProviderCollection | null> => {
     if (!collection) return null;
-    const dirId = Number(collection.providerData?.dirId);
+    const rawDirId = Number(collection.providerData?.dirId);
     const owned = collection.providerData?.owned === true;
-    if (qqListKindOf(collection) || collection.isLiked || (owned && dirId === QQ_LIKED_DIR_ID)) return collection;
+    if (qqListKindOf(collection) || collection.isLiked || (owned && rawDirId === QQ_LIKED_DIR_ID)) return collection;
+    // 与读曲目同一条道理：自建歌单缺目录号时先把它找回来，别去撞匿名路由的 10 秒预算。
+    const dirId = owned && !(Number.isFinite(rawDirId) && rawDirId > 0)
+        ? (await dirIdFromOwnedPlaylists(id)) ?? rawDirId
+        : rawDirId;
     const ownedRoute = owned && Number.isFinite(dirId) && dirId > 0;
     try {
         if (ownedRoute) {
@@ -844,6 +856,31 @@ const getUserPlaylists = async (
         hasMore: nextOffset < playlists.length,
         nextOffset,
     };
+};
+
+/**
+ * 自建歌单的目录号（`dirId`）：带凭据的分页路由 `/user/playlist-detail` 要它。
+ *
+ * 从推荐卡片、分享链接进来的歌单对象里没有这个号，而匿名全量路由对大歌单会撞上后端的十秒预算。
+ * 账号自己的歌单列表（GetPlaylistByUin）里每张都带着它，按 id 找一次就够；用这一轮已经读过的那份，
+ * 没有才读一遍。找不到、或者这次列表读不到，交回 null，调用方照旧走匿名路由。
+ */
+const dirIdFromOwnedPlaylists = async (id: MediaId): Promise<number | null> => {
+    try {
+        const response = playlistRound?.response ?? await requestQq<any>('user_playlist', {});
+        const playlists = Array.isArray(response?.playlist) ? response.playlist : [];
+        for (const raw of playlists) {
+            const item = normalizeQqCollection(raw);
+            const known = [item.id, item.providerData?.tid, item.providerData?.dissid];
+            if (!known.some(value => value !== undefined && String(value) === String(id))) continue;
+            const dirId = Number(item.providerData?.dirId);
+            return item.providerData?.owned === true && Number.isFinite(dirId) && dirId > 0 ? dirId : null;
+        }
+        return null;
+    } catch (error) {
+        console.warn('[QQProvider] dir-id lookup failed', error);
+        return null;
+    }
 };
 
 const LIKED_SONG_PAGE_SIZE = 100;
